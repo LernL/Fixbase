@@ -1,15 +1,17 @@
-# fixbase_client.py
 import json
 import os
-from datetime import datetime
-import tkinter as tk
-from tkinter import messagebox, scrolledtext
 import requests
+import tkinter as tk
+from datetime import datetime
+from tkinter import messagebox, scrolledtext
 
+# --- Configuration ---
 STORAGE = "fixbase.json"
-SERVER = "http://127.0.0.1:5000"
+SERVER = "http://192.168.78.41:5000"
 REQ_TIMEOUT = 5
 
+
+# --- Models ---
 class Card:
     def __init__(self, title, description, steps, cli_commands, tags=None,
                  created_at=None, verified=False, history=None, id=None, local_saved=False):
@@ -33,23 +35,26 @@ class Card:
     def from_dict(d):
         return Card(**d)
 
-# ---------------- GUI Dialogs ----------------
+
+# --- Dialogs ---
 class AuthDialog:
     def __init__(self, parent, title, confirm_text, show_confirm=False):
         self.top = tk.Toplevel(parent)
         self.top.title(title)
+
         tk.Label(self.top, text="Username").pack(anchor=tk.W)
         self.e_user = tk.Entry(self.top)
         self.e_user.pack(fill=tk.X)
+
         tk.Label(self.top, text="Password").pack(anchor=tk.W)
         self.e_pass = tk.Entry(self.top, show="*")
         self.e_pass.pack(fill=tk.X)
+
+        self.e_pass2 = None
         if show_confirm:
             tk.Label(self.top, text="Confirm password").pack(anchor=tk.W)
             self.e_pass2 = tk.Entry(self.top, show="*")
             self.e_pass2.pack(fill=tk.X)
-        else:
-            self.e_pass2 = None
 
         btnf = tk.Frame(self.top)
         btnf.pack(pady=6)
@@ -68,15 +73,17 @@ class AuthDialog:
         self.result = (u, p)
         self.top.destroy()
 
+
 class CardDialog:
     def __init__(self, parent):
         self.top = tk.Toplevel(parent)
         self.top.title("Додати картку")
-        self.e_title = self.add_label_entry("Назва", 80)
-        self.e_desc = self.add_label_text("Опис", 6)
-        self.e_steps = self.add_label_text("Кроки вирішення", 6)
-        self.e_cli = self.add_label_entry("CLI-команди (через ;)", 80)
-        self.e_tags = self.add_label_entry("Теги (через ,)", 80)
+
+        self.e_title = self._add_field("Назва", 80)
+        self.e_desc = self._add_area("Опис", 6)
+        self.e_steps = self._add_area("Кроки вирішення", 6)
+        self.e_cli = self._add_field("CLI-команди (через ;)", 80)
+        self.e_tags = self._add_field("Теги (через ,)", 80)
 
         btn = tk.Frame(self.top)
         btn.pack(fill=tk.X, pady=4)
@@ -84,13 +91,13 @@ class CardDialog:
         tk.Button(btn, text="Відмінити", command=self.top.destroy).pack(side=tk.LEFT)
         self.result = None
 
-    def add_label_entry(self, text, width=40):
+    def _add_field(self, text, width):
         tk.Label(self.top, text=text).pack(anchor=tk.W)
         e = tk.Entry(self.top, width=width)
         e.pack(fill=tk.X)
         return e
 
-    def add_label_text(self, text, height=4):
+    def _add_area(self, text, height):
         tk.Label(self.top, text=text).pack(anchor=tk.W)
         t = scrolledtext.ScrolledText(self.top, height=height)
         t.pack(fill=tk.BOTH)
@@ -108,7 +115,8 @@ class CardDialog:
         self.result = (title, desc, steps, cli, tags)
         self.top.destroy()
 
-# ---------------- Detail Window ----------------
+
+# --- Windows ---
 class DetailWindow:
     def __init__(self, parent, card: Card, app):
         self.card = card
@@ -125,17 +133,22 @@ class DetailWindow:
 
         btns = tk.Frame(top)
         btns.pack(fill=tk.X)
+
         self.btn_copy_cli = tk.Button(btns, text="Копіювати всі CLI", command=self.copy_all_cli)
         self.btn_copy_cli.pack(side=tk.LEFT, padx=4)
+
         self.btn_mark_verified = tk.Button(btns, text="Позначити як перевірено (admin)", command=self.mark_verified)
         self.btn_mark_verified.pack(side=tk.LEFT)
-        self.btn_toggle_local = tk.Button(btns, text="Зберегти локально / Вилучити (user)", command=self.toggle_local_save)
+
+        self.btn_toggle_local = tk.Button(btns, text="Зберегти локально / Вилучити (user)",
+                                          command=self.toggle_local_save)
         self.btn_toggle_local.pack(side=tk.LEFT, padx=6)
+
         tk.Button(btns, text="Закрити", command=top.destroy).pack(side=tk.RIGHT, padx=4)
 
         role = app.role
         self.btn_mark_verified.config(state=tk.NORMAL if role == "admin" else tk.DISABLED)
-        self.btn_toggle_local.config(state=tk.NORMAL if role in ("user","admin") else tk.DISABLED)
+        self.btn_toggle_local.config(state=tk.NORMAL if role in ("user", "admin") else tk.DISABLED)
 
     def format_card(self, c):
         return "\n".join([
@@ -145,7 +158,7 @@ class DetailWindow:
             "Теги: " + ", ".join(c.tags),
             f"Створено: {c.created_at}",
             f"Перевірено: {c.verified}",
-            f"Локально збережено: {bool(getattr(c,'local_saved',False))}"
+            f"Локально збережено: {bool(getattr(c, 'local_saved', False))}"
         ])
 
     def copy_all_cli(self):
@@ -160,14 +173,14 @@ class DetailWindow:
         if self.app.role != "admin":
             messagebox.showerror("Denied", "Тільки admin може позначати як перевірено")
             return
-        if not self.card.id:
-            messagebox.showerror("Error", "Ця картка не існує на сервері")
-            return
+
         try:
-            r = requests.post(f"{SERVER}/cards/{self.card.id}/verify", headers=self.app.auth_headers(), timeout=REQ_TIMEOUT)
+            r = requests.post(f"{SERVER}/cards/{self.card.id}/verify", headers=self.app.auth_headers(),
+                              timeout=REQ_TIMEOUT)
             r.raise_for_status()
             updated = Card.from_dict(r.json())
             updated.local_saved = self.card.local_saved
+
             for i, c in enumerate(self.app.cards):
                 if c.id == updated.id:
                     self.app.cards[i] = updated
@@ -178,13 +191,14 @@ class DetailWindow:
             messagebox.showerror("Помилка", f"Не вдалося відправити запит: {e}")
 
     def toggle_local_save(self):
-        self.card.local_saved = not getattr(self.card,"local_saved",False)
+        self.card.local_saved = not getattr(self.card, "local_saved", False)
         self.app.save_local()
         self.app.refresh_list()
         status = "збережено" if self.card.local_saved else "видалено з локальних"
         messagebox.showinfo("OK", f"Картку {status}.")
 
-# ---------------- Main App ----------------
+
+# --- Main Application ---
 class FixbaseApp:
     def __init__(self, root):
         self.root = root
@@ -193,23 +207,21 @@ class FixbaseApp:
         self.token = None
         self.role = "guest"
         self.username = None
-
         self.saved_local_cards = []
 
-        # GUI layout
         self.build_gui()
-        # Load data
+
+        # Initial load
         if not self.load_from_server():
             self.load_local()
-        self.saved_local_cards = self.load_local_saved_cards()
         self.merge_saved_into_master()
         self.update_buttons()
         self.refresh_list()
 
-    # ---------------- GUI ----------------
     def build_gui(self):
         left = tk.Frame(self.root)
         left.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=8)
+
         tk.Label(left, text="Пошук").pack(anchor=tk.W)
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", lambda *a: self.refresh_list())
@@ -224,47 +236,49 @@ class FixbaseApp:
         self.btn_add = tk.Button(btn_frame, text="Додати", command=self.add_card)
         self.btn_view = tk.Button(btn_frame, text="Переглянути", command=self.open_detail_window)
         self.btn_delete = tk.Button(btn_frame, text="Видалити", command=self.delete_card)
-        for b in (self.btn_add,self.btn_view,self.btn_delete):
+        for b in (self.btn_add, self.btn_view, self.btn_delete):
             b.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        tk.Button(left, text="Оновити (server)", command=self.load_from_server).pack(fill=tk.X, pady=4)
+        tk.Button(left, text="Оновити (server)", command=self.on_refresh_click).pack(fill=tk.X, pady=4)
+
         self.auth_button = tk.Button(left, text="Login", command=self.login_flow)
         self.auth_button.pack(fill=tk.X)
         self.register_button = tk.Button(left, text="Register", command=self.register_flow)
-        self.register_button.pack(fill=tk.X, pady=(2,0))
+        self.register_button.pack(fill=tk.X, pady=(2, 0))
+
         self.lbl_user = tk.Label(left, text="guest", fg="gray")
-        self.lbl_user.pack(anchor=tk.W, pady=(6,0))
+        self.lbl_user.pack(anchor=tk.W, pady=(6, 0))
 
         right = tk.Frame(self.root)
         right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
-        self.detail_title = tk.Label(right, text="Оберіть картку для перегляду", font=(None,14))
+        self.detail_title = tk.Label(right, text="Оберіть картку для перегляду", font=(None, 14))
         self.detail_title.pack(anchor=tk.W)
         self.detail_text = scrolledtext.ScrolledText(right, state='disabled')
         self.detail_text.pack(fill=tk.BOTH, expand=True)
 
-    # ---------------- Auth ----------------
     def auth_headers(self):
         return {"Authorization": f"Bearer {self.token}"} if self.token else {}
 
+    def on_refresh_click(self):
+        if self.load_from_server():
+            self.merge_saved_into_master()
+            self.refresh_list()
+            messagebox.showinfo("Готово", "Список карток оновлено з сервера!")
+
+    # --- Auth Flow ---
     def login_flow(self):
         dlg = AuthDialog(self.root, "Login", "Login")
         self.root.wait_window(dlg.top)
-        if not dlg.result:
-            return
+        if not dlg.result: return
+
         username, password = dlg.result
         try:
-            r = requests.post(f"{SERVER}/login", json={"username":username,"password":password}, timeout=REQ_TIMEOUT)
+            r = requests.post(f"{SERVER}/login", json={"username": username, "password": password}, timeout=REQ_TIMEOUT)
             r.raise_for_status()
             data = r.json()
-            self.token, self.role, self.username = data.get("token"), data.get("role","guest"), data.get("username",username)
-            self.lbl_user.config(text=f"{self.username} ({self.role})", fg="green")
-            self.auth_button.config(text="Logout", command=self.logout_flow)
-            self.register_button.config(state=tk.DISABLED)
-            self.load_from_server()
-            self.saved_local_cards = self.load_local_saved_cards()
-            self.merge_saved_into_master()
-            self.update_buttons()
-            self.refresh_list()
+            self.token, self.role, self.username = data.get("token"), data.get("role", "guest"), data.get("username",
+                                                                                                          username)
+            self._on_auth_success()
             messagebox.showinfo("OK", f"Logged in as {self.username} ({self.role})")
         except Exception as e:
             messagebox.showerror("Login failed", str(e))
@@ -272,25 +286,28 @@ class FixbaseApp:
     def register_flow(self):
         dlg = AuthDialog(self.root, "Register", "Register", show_confirm=True)
         self.root.wait_window(dlg.top)
-        if not dlg.result:
-            return
+        if not dlg.result: return
+
         username, password = dlg.result
         try:
-            r = requests.post(f"{SERVER}/register", json={"username":username,"password":password}, timeout=REQ_TIMEOUT)
+            r = requests.post(f"{SERVER}/register", json={"username": username, "password": password},
+                              timeout=REQ_TIMEOUT)
             r.raise_for_status()
             data = r.json()
-            self.token, self.role, self.username = data.get("token"), data.get("role","user"), username
-            self.lbl_user.config(text=f"{self.username} ({self.role})", fg="green")
-            self.auth_button.config(text="Logout", command=self.logout_flow)
-            self.register_button.config(state=tk.DISABLED)
-            self.load_from_server()
-            self.saved_local_cards = self.load_local_saved_cards()
-            self.merge_saved_into_master()
-            self.update_buttons()
-            self.refresh_list()
+            self.token, self.role, self.username = data.get("token"), data.get("role", "user"), username
+            self._on_auth_success()
             messagebox.showinfo("OK", "Registered and logged in")
         except Exception as e:
             messagebox.showerror("Register failed", str(e))
+
+    def _on_auth_success(self):
+        self.lbl_user.config(text=f"{self.username} ({self.role})", fg="green")
+        self.auth_button.config(text="Logout", command=self.logout_flow)
+        self.register_button.config(state=tk.DISABLED)
+        self.load_from_server()
+        self.merge_saved_into_master()
+        self.update_buttons()
+        self.refresh_list()
 
     def logout_flow(self):
         self.token, self.role, self.username = None, "guest", None
@@ -299,20 +316,18 @@ class FixbaseApp:
         self.register_button.config(state=tk.NORMAL)
         self.cards = []
         self.load_local()
-        self.saved_local_cards = self.load_local_saved_cards()
         self.merge_saved_into_master()
         self.update_buttons()
         self.refresh_list()
         messagebox.showinfo("OK", "Logged out")
 
-    # ---------------- Buttons ----------------
     def update_buttons(self):
-        state = tk.NORMAL if self.role=="admin" else tk.DISABLED
+        state = tk.NORMAL if self.role == "admin" else tk.DISABLED
         self.btn_add.config(state=state)
         self.btn_delete.config(state=state)
         self.btn_view.config(state=tk.NORMAL)
 
-    # ---------------- Local storage ----------------
+    # --- Storage & Sync ---
     def load_local_saved_cards(self):
         if os.path.exists(STORAGE):
             try:
@@ -327,14 +342,15 @@ class FixbaseApp:
     def save_local(self):
         try:
             with open(STORAGE, 'w', encoding='utf-8') as f:
-                json.dump([c.to_dict() for c in self.cards if getattr(c,'local_saved',False)], f, ensure_ascii=False, indent=2)
+                json.dump([c.to_dict() for c in self.cards if getattr(c, 'local_saved', False)],
+                          f, ensure_ascii=False, indent=2)
         except Exception as e:
             messagebox.showwarning("Помилка", f"Не вдалося зберегти локальну копію: {e}")
 
     def load_local(self):
         if os.path.exists(STORAGE):
             try:
-                with open(STORAGE,'r',encoding='utf-8') as f:
+                with open(STORAGE, 'r', encoding='utf-8') as f:
                     self.cards = [Card.from_dict(d) for d in json.load(f)]
                     for c in self.cards: c.local_saved = True
             except Exception:
@@ -342,51 +358,53 @@ class FixbaseApp:
         else:
             self.cards = []
 
-    # ---------------- Server sync ----------------
     def load_from_server(self):
         try:
             r = requests.get(f"{SERVER}/cards", headers=self.auth_headers(), timeout=REQ_TIMEOUT)
             r.raise_for_status()
+            # Оновлюємо список у пам'яті без перезапису локального файлу
             self.cards = [Card.from_dict(d) for d in r.json()]
-            try:
-                with open(STORAGE,'w',encoding='utf-8') as f:
-                    json.dump([c.to_dict() for c in self.cards], f, ensure_ascii=False, indent=2)
-            except Exception: pass
             return True
         except Exception as e:
-            messagebox.showwarning("Помилка зв'язку", f"Не вдалося завантажити дані з сервера: {e}\nЗавантажую локально")
+            messagebox.showwarning("Помилка зв'язку",
+                                   f"Не вдалося завантажити дані з сервера: {e}\nЗавантажую локально")
             return False
 
     def merge_saved_into_master(self):
         self.saved_local_cards = self.load_local_saved_cards()
         saved_by_id = {c.id: c for c in self.saved_local_cards if c.id}
         ids_on_master = {c.id for c in self.cards if c.id}
+
         for c in self.cards:
             if c.id in saved_by_id: c.local_saved = True
+
         for s in self.saved_local_cards:
             if not s.id or s.id not in ids_on_master:
                 s.local_saved = True
                 self.cards.append(s)
 
-    # ---------------- UI / list ----------------
+    # --- Listbox Logic ---
     def refresh_list(self):
         q = self.search_var.get().lower()
         self.listbox.delete(0, tk.END)
-        for i,c in enumerate(self.cards):
-            if not q or q in (c.title or "").lower() or q in (c.description or "").lower() or any(q in t.lower() for t in c.tags):
+        for i, c in enumerate(self.cards):
+            match = not q or q in (c.title or "").lower() or q in (c.description or "").lower() or any(
+                q in t.lower() for t in c.tags)
+            if match:
                 mark = '✔' if c.verified else ' '
-                loc = '*' if getattr(c,'local_saved',False) else ' '
-                self.listbox.insert(tk.END, f"{i+1}. [{mark}{loc}] {c.title}")
+                loc = '*' if getattr(c, 'local_saved', False) else ' '
+                self.listbox.insert(tk.END, f"{i + 1}. [{mark}{loc}] {c.title}")
 
     def selected_index(self):
         sel = self.listbox.curselection()
         if not sel: return None
         try:
-            idx = int(self.listbox.get(sel[0]).split('.',1)[0])-1
-            return idx if 0<=idx<len(self.cards) else None
-        except: return None
+            idx = int(self.listbox.get(sel[0]).split('.', 1)[0]) - 1
+            return idx if 0 <= idx < len(self.cards) else None
+        except:
+            return None
 
-    # ---------------- Card actions ----------------
+    # --- CRUD Actions ---
     def add_card(self):
         if self.role != "admin":
             messagebox.showerror("Denied", "Тільки admin може додавати картки")
@@ -394,6 +412,7 @@ class FixbaseApp:
         dlg = CardDialog(self.root)
         self.root.wait_window(dlg.top)
         if not dlg.result: return
+
         title, desc, steps, cli, tags = dlg.result
         card = Card(title, desc, steps, cli, tags)
         try:
@@ -410,12 +429,15 @@ class FixbaseApp:
         if idx is None:
             messagebox.showinfo("Інфо", "Оберіть картку для видалення.")
             return
-        card = self.cards[idx]
+
         if self.role != "admin":
             messagebox.showerror("Denied", "Тільки admin може видаляти картки")
             return
+
         if not messagebox.askyesno("Підтвердження", "Видалити вибрану картку?"):
             return
+
+        card = self.cards[idx]
         try:
             if card.id:
                 r = requests.delete(f"{SERVER}/cards/{card.id}", headers=self.auth_headers(), timeout=REQ_TIMEOUT)
@@ -427,13 +449,6 @@ class FixbaseApp:
         except Exception as e:
             messagebox.showerror("Помилка", f"Не вдалося видалити картку: {e}")
 
-    def view_card(self):
-        idx = self.selected_index()
-        if idx is None:
-            messagebox.showinfo("Інфо", "Оберіть картку у списку.")
-            return
-        self.show_detail(self.cards[idx])
-
     def open_detail_window(self):
         idx = self.selected_index()
         if idx is None:
@@ -441,22 +456,11 @@ class FixbaseApp:
             return
         DetailWindow(self.root, self.cards[idx], self)
 
-    def show_detail(self, card: Card):
-        self.detail_title.config(text=card.title)
-        self.detail_text.config(state='normal')
-        self.detail_text.delete('1.0', tk.END)
-        self.detail_text.insert(tk.END, "\n".join([
-            f"Опис:\n{card.description}\n",
-            f"Кроки вирішення:\n{card.steps}\n",
-            "CLI-команди:\n" + "\n".join(card.cli_commands) + "\n",
-            "Теги: " + ", ".join(card.tags),
-            f"Створено: {card.created_at}",
-            f"Перевірено: {card.verified}",
-            f"Локально збережено: {bool(getattr(card,'local_saved',False))}"
-        ]))
-        self.detail_text.config(state='disabled')
+    def view_card(self):
+        # Alias for listbox double-click
+        self.open_detail_window()
 
-# ---------------- Run ----------------
+
 if __name__ == '__main__':
     root = tk.Tk()
     app = FixbaseApp(root)
