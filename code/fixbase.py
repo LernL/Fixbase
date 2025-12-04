@@ -7,7 +7,7 @@ from tkinter import messagebox, scrolledtext
 
 # --- Configuration ---
 STORAGE = "fixbase.json"
-SERVER = "http://192.168.78.41:5000"
+SERVER = "http://192.168.78.195:5000"
 REQ_TIMEOUT = 5
 
 
@@ -38,9 +38,10 @@ class Card:
 
 # --- Dialogs ---
 class AuthDialog:
-    def __init__(self, parent, title, confirm_text, show_confirm=False):
+    def __init__(self, parent, title, confirm_text, show_confirm=False, on_close=None):
         self.top = tk.Toplevel(parent)
         self.top.title(title)
+        self.on_close = on_close
 
         tk.Label(self.top, text="Username").pack(anchor=tk.W)
         self.e_user = tk.Entry(self.top)
@@ -59,8 +60,19 @@ class AuthDialog:
         btnf = tk.Frame(self.top)
         btnf.pack(pady=6)
         tk.Button(btnf, text=confirm_text, command=self.on_confirm).pack(side=tk.LEFT, padx=4)
-        tk.Button(btnf, text="Cancel", command=self.top.destroy).pack(side=tk.LEFT)
+        tk.Button(btnf, text="Cancel", command=self._on_cancel).pack(side=tk.LEFT)
         self.result = None
+
+        self.top.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    def _on_cancel(self):
+        self.result = None
+        if callable(self.on_close):
+            try:
+                self.on_close()
+            except Exception:
+                pass
+        self.top.destroy()
 
     def on_confirm(self):
         u, p = self.e_user.get().strip(), self.e_pass.get()
@@ -71,6 +83,11 @@ class AuthDialog:
             messagebox.showwarning("Error", "Passwords do not match")
             return
         self.result = (u, p)
+        if callable(self.on_close):
+            try:
+                self.on_close()
+            except Exception:
+                pass
         self.top.destroy()
 
 
@@ -208,7 +225,7 @@ class FixbaseApp:
         self.role = "guest"
         self.username = None
         self.saved_local_cards = []
-
+        self.auth_dialog = None
         self.build_gui()
 
         # Initial load
@@ -267,17 +284,22 @@ class FixbaseApp:
 
     # --- Auth Flow ---
     def login_flow(self):
-        dlg = AuthDialog(self.root, "Login", "Login")
+        if self.auth_dialog and getattr(self.auth_dialog, "top", None) and self.auth_dialog.top.winfo_exists():
+            messagebox.showinfo("Інфо", "Вікно логіну вже відкрито")
+            return
+
+        dlg = AuthDialog(self.root, "Login", "Login", on_close=self._on_auth_dialog_close)
+        self.auth_dialog = dlg
         self.root.wait_window(dlg.top)
-        if not dlg.result: return
+        if not dlg.result:
+            return
 
         username, password = dlg.result
         try:
             r = requests.post(f"{SERVER}/login", json={"username": username, "password": password}, timeout=REQ_TIMEOUT)
             r.raise_for_status()
             data = r.json()
-            self.token, self.role, self.username = data.get("token"), data.get("role", "guest"), data.get("username",
-                                                                                                          username)
+            self.token, self.role, self.username = data.get("token"), data.get("role", "guest"), data.get("username", username)
             self._on_auth_success()
             messagebox.showinfo("OK", f"Logged in as {self.username} ({self.role})")
         except Exception as e:
@@ -362,7 +384,6 @@ class FixbaseApp:
         try:
             r = requests.get(f"{SERVER}/cards", headers=self.auth_headers(), timeout=REQ_TIMEOUT)
             r.raise_for_status()
-            # Оновлюємо список у пам'яті без перезапису локального файлу
             self.cards = [Card.from_dict(d) for d in r.json()]
             return True
         except Exception as e:
@@ -457,8 +478,10 @@ class FixbaseApp:
         DetailWindow(self.root, self.cards[idx], self)
 
     def view_card(self):
-        # Alias for listbox double-click
         self.open_detail_window()
+
+    def _on_auth_dialog_close(self):
+        self.auth_dialog = None
 
 
 if __name__ == '__main__':

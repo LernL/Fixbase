@@ -225,6 +225,33 @@ def delete_card(card_id):
     conn.close()
     return jsonify({"status": "deleted"}), 200
 
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.get_json(force=True)
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username or not password:
+        return jsonify({"error": "username+password required"}), 400
+
+    conn = connect_db()
+    c = conn.cursor()
+    c.execute("SELECT id FROM users WHERE username=?", (username,))
+    if c.fetchone():
+        conn.close()
+        return jsonify({"error": "username already exists"}), 409
+
+    token = secrets.token_hex(16)
+    p_hash = hash_password(password)
+    c.execute(
+        "INSERT INTO users (username, password_hash, role, token) VALUES (?, ?, ?, ?)",
+        (username, p_hash, "user", token)
+    )
+    conn.commit()
+    conn.close()
+
+    return jsonify({"token": token, "role": "user", "username": username}), 201
+
 
 if __name__ == "__main__":
     init_db()
