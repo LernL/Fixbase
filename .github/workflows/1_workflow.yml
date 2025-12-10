@@ -1,8 +1,9 @@
-name: first_workflow
+name: CI — Build & Release
 
 on:
   push:
     branches:
+      - main
 
 jobs:
   build_and_release:
@@ -11,9 +12,11 @@ jobs:
       contents: write
 
     steps:
+      # 1️⃣ Завантажити репозиторій
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2️⃣ Показати автора останнього коміту
       - name: Show last commit info
         run: |
           Write-Host "Last commit info:"
@@ -21,11 +24,13 @@ jobs:
           Write-Host "GITHUB_ACTOR: $env:GITHUB_ACTOR"
         shell: powershell
 
+      # 3️⃣ Підготувати Python (якщо потрібен для .bat)
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
+      # 4️⃣ Запустити installer.bat
       - name: Run installer.bat
         shell: powershell
         run: |
@@ -38,20 +43,21 @@ jobs:
           } else {
             Write-Host "installer.bat not found"
           }
- 
-    - name: Package release artifacts	
-    shell: powershell
-    run: |
-    $short = $env:GITHUB_SHA.Substring(0,7)
-    $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
-    
-    $exeFiles = Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object -ExpandProperty FullName
 
-    $paths = @("code\*", "demoinstaller\*") + $exeFiles
+      # 5️⃣ Пакуємо артефакти у zip
+      - name: Package release artifacts
+  	shell: powershell
+  	run: |
+    	  $short = $env:GITHUB_SHA.Substring(0,7)
+          $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
     
-    Compress-Archive -Path $paths -DestinationPath $zipName -Force
+          $exeFiles = Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object -ExpandProperty FullName
     
-    Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
+          $paths = @("code\*", "demoinstaller\*") + $exeFiles
+    
+          Compress-Archive -Path $paths -DestinationPath $zipName -Force
+    
+          Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
 
 
       - name: Upload artifact
@@ -75,6 +81,7 @@ jobs:
           draft: false
           prerelease: false
 
+      # 8️⃣ Завантажуємо zip у реліз
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
         env:
