@@ -1,4 +1,4 @@
-name: 1_workflow
+name: first_workflow
 
 on:
   push:
@@ -44,7 +44,7 @@ jobs:
         run: |
           $short = $env:GITHUB_SHA.Substring(0,7)
           $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
-          $paths = @("code\*", "demoinstaller\*", "dist\Fixbase.exe") # тут твій .exe
+          $paths = @("code\*", "demoinstaller\*", "fixbase.exe")  # <- сюди твій exe
           Compress-Archive -Path $paths -DestinationPath $zipName -Force
           Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
 
