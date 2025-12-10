@@ -38,15 +38,21 @@ jobs:
           } else {
             Write-Host "installer.bat not found"
           }
+ 
+    - name: Package release artifacts	
+    shell: powershell
+    run: |
+    $short = $env:GITHUB_SHA.Substring(0,7)
+    $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
+    
+    $exeFiles = Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object -ExpandProperty FullName
 
-      - name: Package release artifacts
-        shell: powershell
-        run: |
-          $short = $env:GITHUB_SHA.Substring(0,7)
-          $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
-          $paths = @("code\*", "demoinstaller\*", "fixbase.exe")  # <- сюди твій exe
-          Compress-Archive -Path $paths -DestinationPath $zipName -Force
-          Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
+    $paths = @("code\*", "demoinstaller\*") + $exeFiles
+    
+    Compress-Archive -Path $paths -DestinationPath $zipName -Force
+    
+    Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
