@@ -3,7 +3,6 @@ name: 1_workflow
 on:
   push:
     branches:
-      - main
 
 jobs:
   build_and_release:
