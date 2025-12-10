@@ -2,6 +2,7 @@ name: 1_workflow
 
 on:
   push:
+    branches:
 
 jobs:
   build_and_release:
@@ -13,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show last-commit author info
+      - name: Show last commit info
         run: |
           Write-Host "Last commit info:"
           git --no-pager log -1 --pretty=format:"Hash: %H`nAuthor: %an <%ae>`nDate: %ad`nSubject: %s"
@@ -22,14 +23,8 @@ jobs:
 
       - name: Setup Python
         uses: actions/setup-python@v4
-
-
-      - name: Record existing EXE files
-        shell: powershell
-        run: |
-          Get-ChildItem -Path . -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName |
-            Out-File pre_exes.txt -Encoding utf8
+        with:
+          python-version: '3.x'
 
       - name: Run installer.bat
         shell: powershell
@@ -44,49 +39,14 @@ jobs:
             Write-Host "installer.bat not found"
           }
 
-      - name: Detect new EXE(s)
-        shell: powershell
-        run: |
-          Get-ChildItem -Path . -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName |
-            Out-File post_exes.txt -Encoding utf8
-
-          $pre = @{}
-          if (Test-Path pre_exes.txt) {
-            Get-Content pre_exes.txt | ForEach-Object { $pre[$_] = $true }
-          }
-
-          $post = @()
-          if (Test-Path post_exes.txt) { $post = Get-Content post_exes.txt }
-
-          $new = $post | Where-Object { -not $pre.ContainsKey($_) }
-
-          if ($new.Count -eq 0) {
-            Write-Host "No new .exe detected — using all found"
-            $new = $post
-          }
-
-	  if ($new.Count -eq 0) {
-            Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_EXES="
-	  } else {
-    	    Add-Content -Path $env:GITHUB_ENV -Value ("RELEASE_EXES=" + ($new -join ';'))
-	  }
-
-
-
       - name: Package release artifacts
         shell: powershell
         run: |
           $short = $env:GITHUB_SHA.Substring(0,7)
           $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
-          $paths = @("code\*", "demoinstaller\*")
-
-          if ($env:RELEASE_EXES -and $env:RELEASE_EXES.Trim() -ne "") {
-            $env:RELEASE_EXES.Split(";") | ForEach-Object { $paths += $_ }
-          }
-
+          $paths = @("code\*", "demoinstaller\*", "dist\Fixbase.exe") # тут твій .exe
           Compress-Archive -Path $paths -DestinationPath $zipName -Force
-          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+          Add-Content -Path $env:GITHUB_ENV -Value ("ZIP_NAME=$zipName")
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
