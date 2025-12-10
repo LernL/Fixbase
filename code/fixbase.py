@@ -247,6 +247,7 @@ class FixbaseApp:
         self.listbox = tk.Listbox(left, width=40)
         self.listbox.pack(fill=tk.Y, expand=True)
         self.listbox.bind('<Double-1>', lambda e: self.view_card())
+        self.listbox.bind('<<ListboxSelect>>', lambda e: self.on_list_select())
 
         btn_frame = tk.Frame(left)
         btn_frame.pack(fill=tk.X)
@@ -405,6 +406,33 @@ class FixbaseApp:
                 self.cards.append(s)
 
     # --- Listbox Logic ---
+    def on_list_select(self, event=None):
+        idx = self.selected_index()
+        if idx is None:
+            self.detail_title.config(text="Оберіть картку для перегляду")
+            self.detail_text.config(state='normal')
+            self.detail_text.delete('1.0', tk.END)
+            self.detail_text.config(state='disabled')
+            return
+
+        c = self.cards[idx]
+        self.detail_title.config(text=c.title)
+        self.detail_text.config(state='normal')
+        self.detail_text.delete('1.0', tk.END)
+        self.detail_text.insert(tk.END, self.format_card_for_main(c))
+        self.detail_text.config(state='disabled')
+
+    def format_card_for_main(self, c: Card) -> str:
+        return "\n".join([
+            f"Опис:\n{c.description}\n",
+            f"Кроки вирішення:\n{c.steps}\n",
+            "CLI-команди:\n" + ("\n".join(c.cli_commands) if c.cli_commands else "(нема)") + "\n",
+            "Теги: " + (", ".join(c.tags) if c.tags else "(нема)"),
+            f"Створено: {c.created_at}",
+            f"Перевірено: {c.verified}",
+            f"Локально збережено: {bool(getattr(c, 'local_saved', False))}"
+        ])
+
     def refresh_list(self):
         q = self.search_var.get().lower()
         self.listbox.delete(0, tk.END)
