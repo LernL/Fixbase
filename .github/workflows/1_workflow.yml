@@ -1,0 +1,118 @@
+name: 1_workflow
+
+on:
+  push:
+
+jobs:
+  build_and_release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show last-commit author info
+        run: |
+          Write-Host "Last commit info:"
+          git --no-pager log -1 --pretty=format:"Hash: %H`nAuthor: %an <%ae>`nDate: %ad`nSubject: %s"
+          Write-Host "GITHUB_ACTOR: $env:GITHUB_ACTOR"
+        shell: powershell
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+
+
+      - name: Record existing EXE files
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName |
+            Out-File pre_exes.txt -Encoding utf8
+
+      - name: Run installer.bat
+        shell: powershell
+        run: |
+          if (Test-Path demoinstaller\installer.bat) {
+            Push-Location demoinstaller
+            .\installer.bat
+            $exit = $LASTEXITCODE
+            Pop-Location
+            if ($exit -ne 0) { Write-Host "installer.bat exited with $exit" }
+          } else {
+            Write-Host "installer.bat not found"
+          }
+
+      - name: Detect new EXE(s)
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName |
+            Out-File post_exes.txt -Encoding utf8
+
+          $pre = @{}
+          if (Test-Path pre_exes.txt) {
+            Get-Content pre_exes.txt | ForEach-Object { $pre[$_] = $true }
+          }
+
+          $post = @()
+          if (Test-Path post_exes.txt) { $post = Get-Content post_exes.txt }
+
+          $new = $post | Where-Object { -not $pre.ContainsKey($_) }
+
+          if ($new.Count -eq 0) {
+            Write-Host "No new .exe detected — using all found"
+            $new = $post
+          }
+
+          if ($new.Count -eq 0) {
+            echo "RELEASE_EXES=" >> $env:GITHUB_ENV
+          } else {
+            echo "RELEASE_EXES=$($new -join ';')" >> $env:GITHUB_ENV
+          }
+
+      - name: Package release artifacts
+        shell: powershell
+        run: |
+          $short = $env:GITHUB_SHA.Substring(0,7)
+          $zipName = "Fixbase-release-$($env:GITHUB_RUN_NUMBER)-$short.zip"
+          $paths = @("code\*", "demoinstaller\*")
+
+          if ($env:RELEASE_EXES -and $env:RELEASE_EXES.Trim() -ne "") {
+            $env:RELEASE_EXES.Split(";") | ForEach-Object { $paths += $_ }
+          }
+
+          Compress-Archive -Path $paths -DestinationPath $zipName -Force
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fixbase-release-zip
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: release-${{ github.run_number }}-${{ github.sha }}
+          release_name: Fixbase release #${{ github.run_number }}
+          body: |
+            Автоматичний реліз
+            Commit: ${{ github.sha }}
+            Branch: ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.ZIP_NAME }}
+          asset_name: ${{ env.ZIP_NAME }}
+          asset_content_type: application/zip
